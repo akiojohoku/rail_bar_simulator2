@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>レール上の金属棒シミュレーター ― 抵抗・コンデンサー・コイル</title>
+<style>
+  :root{
+    --bg:#eef1f5; --panel:#ffffff; --ink:#1b2430; --sub:#5d6b7d;
+    --line:#d7dde6; --grid:#e7ebf1;
+    --R:#e07a2b; --C:#1aa37a; --L:#5566e0;
+    --B:#2f7fd4; --grav:#43c06b; --mag:#e0433f; --vel:#1b2430;
+    --accent:var(--R);
+    --shadow:0 1px 2px rgba(20,30,45,.06),0 6px 18px rgba(20,30,45,.08);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.5;
+    padding:16px 22px; max-width:none; margin:0;
+  }
+  .mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  header h1{font-size:19px;margin:0;letter-spacing:.02em}
+  header .sub{font-size:12.5px;color:var(--sub)}
+
+  /* toolbar */
+  .toolbar{display:flex;gap:8px;background:var(--panel);padding:6px;border-radius:14px;
+    box-shadow:var(--shadow);margin-bottom:14px;flex-wrap:wrap}
+  .tab{flex:1 1 0;min-width:130px;border:none;background:transparent;cursor:pointer;
+    padding:11px 10px;border-radius:10px;font-size:15px;font-weight:600;color:var(--sub);
+    display:flex;flex-direction:column;align-items:center;gap:2px;transition:.15s;line-height:1.2}
+  .tab small{font-weight:500;font-size:11px;opacity:.8}
+  .tab .sym{font-size:18px;font-weight:700}
+  .tab[data-m="R"].on{background:rgba(224,122,43,.12);color:var(--R)}
+  .tab[data-m="C"].on{background:rgba(26,163,122,.12);color:var(--C)}
+  .tab[data-m="L"].on{background:rgba(85,102,224,.12);color:var(--L)}
+  .tab:not(.on):hover{background:#f1f4f8}
+
+  .grid{display:grid;grid-template-columns:1.25fr .75fr;gap:16px;align-items:start}
+  @media(max-width:860px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border-radius:16px;box-shadow:var(--shadow);padding:14px}
+  .card h2{margin:0 0 8px;font-size:13px;color:var(--sub);font-weight:600;letter-spacing:.04em;
+    display:flex;justify-content:space-between;align-items:center}
+  canvas{display:block;width:100%;border-radius:10px}
+  #scene{background:linear-gradient(#fbfcfe,#f3f6fa);height:clamp(330px,46vh,580px)}
+  .gcanvas{background:#fbfcfe;height:clamp(160px,22vh,260px)}
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+  @media(max-width:620px){.charts{grid-template-columns:1fr}}
+
+  /* controls */
+  .ctrlrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+  button.btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 14px;
+    font-size:14px;font-weight:600;cursor:pointer;color:var(--ink);transition:.12s}
+  button.btn:hover{background:#f3f6fa}
+  button.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.btn.primary:hover{filter:brightness(1.06)}
+  .speed{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--sub);margin-left:auto}
+  .speed input{width:96px}
+  label.chk{font-size:12.5px;color:var(--sub);display:flex;align-items:center;gap:5px;cursor:pointer}
+
+  .sliders{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+  @media(max-width:560px){.sliders{grid-template-columns:1fr}}
+  .sl{display:flex;flex-direction:column;gap:3px}
+  .sl .top{display:flex;justify-content:space-between;font-size:12.5px}
+  .sl .top .nm{color:var(--ink);font-weight:600}
+  .sl .top .vl{color:var(--accent);font-weight:700}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:5px;border-radius:3px;
+    background:var(--line);outline:none;margin:6px 0}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;border-radius:50%;
+    background:var(--accent);cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+  input[type=range]::-moz-range-thumb{width:17px;height:17px;border:none;border-radius:50%;background:var(--accent);cursor:pointer}
+
+  .readout{font-size:13px;margin-top:4px}
+  .readout .eq{background:#f4f7fb;border-left:3px solid var(--accent);border-radius:0 8px 8px 0;
+    padding:8px 10px;margin:8px 0;line-height:1.7;color:#2a3645}
+  .readout .eq b{color:var(--accent)}
+  .vals{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-top:6px}
+  .vals .it{display:flex;justify-content:space-between;font-size:12.5px;
+    border-bottom:1px dashed var(--line);padding:3px 0}
+  .vals .it .k{color:var(--sub)}
+  .vals .it .v{font-weight:700}
+  sub{font-size:.72em}
+  .foot{font-size:11.5px;color:var(--sub);text-align:center;margin-top:14px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>レール上の金属棒シミュレーター</h1>
+  <span class="sub">傾斜したレール上を磁場 B 中で滑る金属棒 ― 抵抗・コンデンサー・コイルで運動を比べる</span>
+</header>
+
+<div class="toolbar" id="toolbar">
+  <button class="tab on" data-m="R"><span class="sym">抵抗 R</span><small>指数関数的に終端速度へ</small></button>
+  <button class="tab"     data-m="C"><span class="sym">コンデンサー C</span><small>等加速度運動(直線)</small></button>
+  <button class="tab"     data-m="L"><span class="sym">コイル L</span><small>単振動</small></button>
+</div>
+
+<div class="ctrlrow">
+  <button class="btn primary" id="play">▶ 再生</button>
+  <button class="btn" id="reset">⟲ リセット</button>
+  <label class="chk"><input type="checkbox" id="vecToggle" checked> 力ベクトルを表示</label>
+  <div class="speed">速さ<input type="range" id="speed" min="0.1" max="2" step="0.1" value="1"><span id="speedV" class="mono">1.0×</span></div>
+</div>
+
+<div class="grid">
+  <div>
+    <div class="card">
+      <h2><span>運動の様子（側面図）</span><span class="mono" id="tlabel" style="color:var(--accent)">t = 0.00 s</span></h2>
+      <canvas id="scene"></canvas>
+    </div>
+    <div class="charts">
+      <div class="card">
+        <h2>v − t グラフ（速度）</h2>
+        <canvas id="vchart" class="gcanvas"></canvas>
+      </div>
+      <div class="card">
+        <h2>i − t グラフ（電流）</h2>
+        <canvas id="ichart" class="gcanvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card" style="margin-bottom:14px">
+      <h2>パラメータ</h2>
+      <div class="sliders" id="sliders"></div>
+    </div>
+    <div class="card">
+      <h2>式と現在値</h2>
+      <div class="readout" id="readout"></div>
+    </div>
+  </div>
+</div>
+
+<div class="foot">
+  起電力 = Bℓv cosθ ／ 棒にはたらく磁気力の斜面成分 = ℓIB cosθ ／ 運動方程式 m(dv/dt) = mg sinθ − ℓIB cosθ<br>
+  授業用に GitHub Pages 等へそのまま配置できます（外部依存なし・オフライン動作）。
+</div>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+
+/* ---------- 状態 ---------- */
+const P = { m:0.10, B:1.0, l:0.50, thetaDeg:30, g:9.8, R:2.0, C:1.0, L:1.0 };
+let mode='R', t=0, playing=false, speed=1, showVec=true, last=0;
+
+/* スライダー定義（共通 + モード別） */
+const SHARED=[
+  {k:'m',     nm:'質量 m',       min:0.02,max:0.5, step:0.01,unit:'kg'},
+  {k:'B',     nm:'磁束密度 B',   min:0.2, max:2.0, step:0.05,unit:'T'},
+  {k:'l',     nm:'棒の長さ ℓ',   min:0.2, max:1.0, step:0.05,unit:'m'},
+  {k:'thetaDeg',nm:'傾斜角 θ',   min:5,   max:75,  step:1,   unit:'°'},
+];
+const ELEM={
+  R:{k:'R',nm:'抵抗 R',     min:0.5,max:10, step:0.1, unit:'Ω'},
+  C:{k:'C',nm:'電気容量 C', min:0.1,max:5,  step:0.1, unit:'F'},
+  L:{k:'L',nm:'自己ｲﾝﾀﾞｸﾀﾝｽ L',min:0.2,max:5,step:0.1,unit:'H'},
+};
+
+/* ---------- 物理（解析解） ---------- */
+function phys(){
+  const th=P.thetaDeg*Math.PI/180, c=Math.cos(th), s=Math.sin(th);
+  const Bl=P.B*P.l, Blc=Bl*c;          // Bℓcosθ
+  const gsin=P.g*s;
+  const o={th,c,s,Blc,gsin,I0:P.m*gsin/Blc};   // I0 = mg sinθ /(Bℓcosθ)
+  if(mode==='R'){
+    const k=Blc*Blc/P.R;               // = B²ℓ²cos²θ /R
+    o.tau=P.m/k;                       // 時定数
+    o.vinf=P.m*gsin/k;                 // 終端速度
+    o.Iinf=o.I0;
+    o.Twin=Math.min(Math.max(5*o.tau,1),60);
+    o.vmax=o.vinf;
+    o.v=tt=>o.vinf*(1-Math.exp(-tt/o.tau));
+    o.i=tt=>(Blc/P.R)*o.v(tt);
+    o.x=tt=>o.vinf*(tt-o.tau*(1-Math.exp(-tt/o.tau)));
+    o.a=tt=>gsin*Math.exp(-tt/o.tau);
+    o.xMax=o.x(o.Twin);
+    o.imax=o.Iinf;
+  }else if(mode==='C'){
+    const denom=P.m+Blc*Blc*P.C;       // m + B²ℓ²C cos²θ
+    o.acc=P.m*gsin/denom;              // 一定の加速度
+    o.Iconst=P.C*Blc*o.acc;            // 一定の電流
+    o.Twin=Math.min(Math.max(8/Math.sqrt(o.acc+0.001),1.5),12);
+    o.v=tt=>o.acc*tt;
+    o.i=tt=>o.Iconst;
+    o.x=tt=>0.5*o.acc*tt*tt;
+    o.a=tt=>o.acc;
+    o.vmax=o.v(o.Twin); o.xMax=o.x(o.Twin); o.imax=o.Iconst*1.4;
+  }else{ // L
+    o.w=Blc/Math.sqrt(P.m*P.L);        // ω = Bℓcosθ /√(mL)
+    o.T=2*Math.PI/o.w;
+    o.vAmp=Math.sqrt(P.m*P.L)*gsin/Blc;
+    o.Twin=2*o.T;
+    o.v=tt=>o.vAmp*Math.sin(o.w*tt);
+    o.i=tt=>o.I0*(1-Math.cos(o.w*tt));
+    o.x=tt=>(P.m*gsin*P.L/(Blc*Blc))*(1-Math.cos(o.w*tt));
+    o.a=tt=>gsin*Math.cos(o.w*tt);
+    o.vmax=o.vAmp; o.xMax=2*(P.m*gsin*P.L/(Blc*Blc)); o.imax=2*o.I0;
+  }
+  return o;
+}
+
+/* ---------- キャンバス補助 ---------- */
+function fit(cv){
+  const dpr=Math.min(window.devicePixelRatio||1,2.5);
+  const w=cv.clientWidth,h=cv.clientHeight;
+  if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){
+    cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);
+  }
+  const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx,w,h};
+}
+function arrow(ctx,x1,y1,x2,y2,col,wid){
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy);
+  ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=wid||2.4;
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  if(len<4)return;
+  const ah=Math.min(9,len*0.5),a=Math.atan2(dy,dx);
+  ctx.beginPath();ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-ah*Math.cos(a-0.42),y2-ah*Math.sin(a-0.42));
+  ctx.lineTo(x2-ah*Math.cos(a+0.42),y2-ah*Math.sin(a+0.42));
+  ctx.closePath();ctx.fill();
+}
+
+/* ---------- 場面（傾斜レール側面図） ---------- */
+function drawScene(o){
+  const {ctx,w,h}=fit($('#scene'));
+  ctx.clearRect(0,0,w,h);
+  const baseY=h-34, ox=66;
+  const c=o.c,s=o.s;
+  let Lpx=Math.min((w-180)/Math.max(c,0.18),(baseY-46)/Math.max(s,0.09));
+  Lpx=Math.min(Lpx,w*0.78);
+  const topX=ox+Lpx*c, topY=baseY-Lpx*s;
+  const ux=(ox-topX)/Lpx, uy=(baseY-topY)/Lpx;       // down-slope unit (top→bottom)
+
+  // uniform B field (vertical up arrows) — 半透明で背景に表示
+  ctx.globalAlpha=0.32;
+  for(let gx=ox+30; gx<w-30; gx+=58){
+    arrow(ctx,gx,baseY-8,gx,baseY-78,'#2f7fd4',2.2);
+  }
+  ctx.globalAlpha=1;
+  // ラベル＋凡例（左上）
+  arrow(ctx,30,58,30,16,'#2f7fd4',3.2);
+  ctx.fillStyle='#2f7fd4';ctx.font='700 14px sans-serif';
+  ctx.fillText('B',39,34);
+  ctx.font='600 11.5px sans-serif';
+  ctx.fillText('磁場（鉛直上向き・一様）',52,30);
+
+  // incline
+  ctx.beginPath();ctx.moveTo(ox,baseY);ctx.lineTo(topX,topY);ctx.lineTo(topX,baseY);ctx.closePath();
+  ctx.fillStyle='#e9eef5';ctx.fill();
+  ctx.strokeStyle='#cdd6e2';ctx.lineWidth=1.4;ctx.stroke();
+  // rail surface
+  ctx.beginPath();ctx.moveTo(ox,baseY);ctx.lineTo(topX,topY);
+  ctx.strokeStyle='#7a8aa0';ctx.lineWidth=3;ctx.stroke();
+  // ground
+  ctx.beginPath();ctx.moveTo(28,baseY);ctx.lineTo(w-14,baseY);
+  ctx.strokeStyle='#aab4c2';ctx.lineWidth=1.4;ctx.stroke();
+  // angle label
+  ctx.fillStyle='#5d6b7d';ctx.font='600 13px sans-serif';
+  ctx.fillText('θ='+P.thetaDeg+'°',ox+18,baseY-7);
+
+  // circuit element near top
+  const exX=topX+10, exY=topY-2;
+  ctx.strokeStyle=accent(); ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(topX,topY);ctx.lineTo(exX,exY);ctx.stroke();
+  drawElement(ctx,exX,exY,accent());
+
+  // bar position
+  const xMax=Math.max(o.xMax,1e-6);
+  let f=o.x(t)/xMax; f=Math.max(0,Math.min(1,f));
+  const bx=topX+f*Lpx*ux, by=topY+f*Lpx*uy;
+
+  // ---- vectors from bar ----
+  const Fref=P.m*o.gsin;                       // mg sinθ を基準長さに
+  const fScale=58/Math.max(Fref,1e-6);
+  const vScale=66/Math.max(o.vmax,1e-6);
+  const vNow=o.v(t), drive=Fref, brake=o.Blc*o.i(t);   // 磁気力斜面成分 = Bℓcosθ·I
+  if(showVec){
+    // mg sinθ : down-slope (green)
+    arrow(ctx,bx,by, bx+ux*drive*fScale, by+uy*drive*fScale, '#43c06b',3);
+    label(ctx,'mg sinθ', bx+ux*drive*fScale, by+uy*drive*fScale, '#37a85a',ux,uy);
+    // ℓIB cosθ : up-slope (red)
+    arrow(ctx,bx,by, bx-ux*brake*fScale, by-uy*brake*fScale, '#e0433f',3);
+    label(ctx,'ℓIB cosθ', bx-ux*brake*fScale, by-uy*brake*fScale, '#cf3a36',-ux,-uy);
+  }
+  // velocity (along slope, sign-aware)
+  const vd=Math.sign(vNow)||1;
+  arrow(ctx,bx,by, bx+ux*vd*Math.abs(vNow)*vScale, by+uy*vd*Math.abs(vNow)*vScale, '#1b2430',2.6);
+  label(ctx,'v', bx+ux*vd*Math.abs(vNow)*vScale, by+uy*vd*Math.abs(vNow)*vScale, '#1b2430',ux*vd,uy*vd);
+
+  // bar (cross-section, current into page ⊗)
+  ctx.beginPath();ctx.arc(bx,by,11,0,7);ctx.fillStyle='#fff';ctx.fill();
+  ctx.lineWidth=2.4;ctx.strokeStyle=accent();ctx.stroke();
+  ctx.strokeStyle=accent();ctx.lineWidth=1.6;
+  ctx.beginPath();ctx.moveTo(bx-6,by-6);ctx.lineTo(bx+6,by+6);
+  ctx.moveTo(bx+6,by-6);ctx.lineTo(bx-6,by+6);ctx.stroke();
+  ctx.fillStyle='#5d6b7d';ctx.font='600 11px sans-serif';
+  ctx.fillText('棒 m',bx-12,by+24);
+}
+function label(ctx,txt,x,y,col,dx,dy){
+  ctx.fillStyle=col;ctx.font='600 11.5px sans-serif';
+  ctx.fillText(txt, x+(dx>=0?4:-ctx.measureText(txt).width-4), y+(dy>=0?12:-4));
+}
+function drawElement(ctx,x,y,col){
+  ctx.strokeStyle=col;ctx.lineWidth=2;ctx.fillStyle=col;
+  ctx.font='700 12px sans-serif';
+  if(mode==='R'){ // resistor zigzag
+    let px=x,py=y; ctx.beginPath();ctx.moveTo(px,py);
+    for(let i=0;i<6;i++){px+=7;py+=(i%2?7:-7);ctx.lineTo(px,py);}
+    ctx.lineTo(px+7,y);ctx.stroke();
+    ctx.fillText('R',x+18,y-10);
+  }else if(mode==='C'){ // capacitor plates
+    ctx.beginPath();ctx.moveTo(x,y-9);ctx.lineTo(x,y+9);
+    ctx.moveTo(x+9,y-9);ctx.lineTo(x+9,y+9);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x-10,y);ctx.lineTo(x,y);ctx.moveTo(x+9,y);ctx.lineTo(x+19,y);ctx.stroke();
+    ctx.fillText('C',x+4,y-15);
+  }else{ // inductor coils
+    ctx.beginPath();
+    for(let i=0;i<4;i++){ctx.arc(x+6+i*11,y,5.5,Math.PI,0,false);}
+    ctx.stroke();
+    ctx.fillText('L',x+18,y-12);
+  }
+}
+
+/* ---------- グラフ ---------- */
+function drawChart(cv,o,key,colVar,opts){
+  const {ctx,w,h}=fit(cv);
+  ctx.clearRect(0,0,w,h);
+  const pl=46,pr=14,pt=12,pb=22, gw=w-pl-pr, gh=h-pt-pb;
+  const Tw=o.Twin;
+  // y-range
+  let yMin=opts.yMin, yMax=opts.yMax;
+  const Y=v=> pt+gh-(v-yMin)/(yMax-yMin)*gh;
+  const X=tt=> pl+tt/Tw*gw;
+  // grid
+  ctx.strokeStyle='var(--grid)';ctx.lineWidth=1;
+  ctx.strokeStyle=getCSS('--grid');
+  for(let i=0;i<=4;i++){const yy=pt+gh*i/4;ctx.beginPath();ctx.moveTo(pl,yy);ctx.lineTo(w-pr,yy);ctx.stroke();}
+  // zero line
+  if(yMin<0){ctx.strokeStyle='#c4ccd6';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(pl,Y(0));ctx.lineTo(w-pr,Y(0));ctx.stroke();}
+  // axes
+  ctx.strokeStyle='#9aa6b5';ctx.lineWidth=1.4;
+  ctx.beginPath();ctx.moveTo(pl,pt);ctx.lineTo(pl,pt+gh);ctx.lineTo(w-pr,pt+gh);ctx.stroke();
+  // asymptote / markers
+  ctx.setLineDash([5,4]);ctx.strokeStyle=getCSS(colVar);ctx.globalAlpha=.5;
+  (opts.marks||[]).forEach(mv=>{ctx.beginPath();ctx.moveTo(pl,Y(mv));ctx.lineTo(w-pr,Y(mv));ctx.stroke();});
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+  // period markers (vertical) ― コイルの周期
+  (opts.periodMarks||[]).forEach(pm=>{
+    if(pm.t>Tw+1e-6)return;
+    const px=X(pm.t);
+    ctx.setLineDash([4,4]);ctx.strokeStyle='#9aa6b5';ctx.globalAlpha=.7;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(px,pt);ctx.lineTo(px,pt+gh);ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;
+    ctx.fillStyle='#5d6b7d';ctx.font='600 10.5px sans-serif';
+    ctx.fillText(pm.label,px-7,pt+gh+16);
+  });
+  ctx.strokeStyle=getCSS(colVar);ctx.lineWidth=2.4;ctx.beginPath();
+  const N=240;
+  for(let i=0;i<=N;i++){const tt=Tw*i/N;const yy=Y(o[key](tt));i?ctx.lineTo(X(tt),yy):ctx.moveTo(X(tt),yy);}
+  ctx.stroke();
+  // current marker
+  const cx=X(Math.min(t,Tw)), cy=Y(o[key](Math.min(t,Tw)));
+  ctx.strokeStyle='#aab4c2';ctx.setLineDash([3,3]);ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(cx,pt);ctx.lineTo(cx,pt+gh);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=getCSS(colVar);ctx.beginPath();ctx.arc(cx,cy,4.5,0,7);ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+  // labels
+  ctx.fillStyle='#7a8696';ctx.font='10.5px sans-serif';
+  ctx.fillText(opts.ylab,pl-40,pt+8);
+  ctx.fillText('t',w-pr-6,pt+gh+16);
+  ctx.fillText(yMax.toFixed(2),2,pt+8);
+  ctx.fillText(yMin.toFixed(2),2,pt+gh+3);
+  // 周期などの注記
+  if(opts.note){
+    ctx.fillStyle=getCSS(colVar);ctx.font='700 11.5px sans-serif';
+    const tw=ctx.measureText(opts.note).width;
+    ctx.fillText(opts.note, w-pr-tw-4, pt+12);
+  }
+}
+
+/* ---------- 式・現在値パネル ---------- */
+function updateReadout(o){
+  const f=(x,d=2)=>x.toFixed(d);
+  let eq='', vals='';
+  if(mode==='R'){
+    eq=`<div class="eq">i = Bℓv cosθ / <b>R</b><br>
+        m(dv/dt) = mg sinθ − (B²ℓ²cos²θ / R)·v<br>
+        終端速度 v<sub>∞</sub> = mgR sinθ / (B²ℓ²cos²θ)</div>`;
+    vals=`<div class="it"><span class="k">終端速度 v∞</span><span class="v mono">${f(o.vinf)} m/s</span></div>
+          <div class="it"><span class="k">時定数 τ</span><span class="v mono">${f(o.tau)} s</span></div>
+          <div class="it"><span class="k">最終電流 I∞</span><span class="v mono">${f(o.Iinf)} A</span></div>
+          <div class="it"><span class="k">現在 v</span><span class="v mono">${f(o.v(t))} m/s</span></div>`;
+  }else if(mode==='C'){
+    eq=`<div class="eq">I = C·d/dt(Bℓv cosθ) = BCℓcosθ·a<br>
+        (m + B²ℓ²<b>C</b> cos²θ)·a = mg sinθ<br>
+        ⇒ a = 一定 ， v = a·t（直線）</div>`;
+    vals=`<div class="it"><span class="k">加速度 a</span><span class="v mono">${f(o.acc)} m/s²</span></div>
+          <div class="it"><span class="k">g sinθ（参考）</span><span class="v mono">${f(o.gsin)} m/s²</span></div>
+          <div class="it"><span class="k">電流 I（一定）</span><span class="v mono">${f(o.Iconst)} A</span></div>
+          <div class="it"><span class="k">現在 v</span><span class="v mono">${f(o.v(t))} m/s</span></div>`;
+  }else{
+    eq=`<div class="eq">−<b>L</b>(dI/dt) + Bℓv cosθ = 0<br>
+        d²I/dt² = −(B²ℓ²cos²θ / mL)(I − I₀) → 単振動<br>
+        ω = Bℓcosθ / √(mL) ， v = √(mL)·g sinθ /(Bℓcosθ)·sin ωt</div>`;
+    vals=`<div class="it"><span class="k">角振動数 ω</span><span class="v mono">${f(o.w)} rad/s</span></div>
+          <div class="it"><span class="k">周期 T</span><span class="v mono">${f(o.T)} s</span></div>
+          <div class="it"><span class="k">速度の振幅</span><span class="v mono">${f(o.vAmp)} m/s</span></div>
+          <div class="it"><span class="k">電流 I₀, 最大2I₀</span><span class="v mono">${f(o.I0)} / ${f(2*o.I0)} A</span></div>`;
+  }
+  $('#readout').innerHTML=eq+`<div class="vals">${vals}</div>`;
+}
+
+/* ---------- 描画統括 ---------- */
+function render(){
+  const o=phys();
+  drawScene(o);
+  const pmarks = mode==='L' ? [
+    {t:o.T/2,label:'T/2'},{t:o.T,label:'T'},{t:1.5*o.T,label:'3T/2'},{t:2*o.T,label:'2T'}
+  ] : null;
+  const note = mode==='L' ? ('周期 T = '+o.T.toFixed(2)+' s  ( ω = '+o.w.toFixed(2)+' rad/s )') : null;
+  drawChart($('#vchart'),o,'v','--B',{
+    ylab:'v(m/s)',
+    yMin: mode==='L'?-o.vmax*1.12:0,
+    yMax: o.vmax*1.12,
+    marks: mode==='R'?[o.vinf]:(mode==='L'?[o.vAmp,-o.vAmp]:[]),
+    periodMarks: pmarks, note: note
+  });
+  drawChart($('#ichart'),o,'i','--mag',{
+    ylab:'i(A)', yMin:0, yMax:o.imax*1.12,
+    marks: mode==='R'?[o.Iinf]:(mode==='L'?[o.I0,2*o.I0]:[o.Iconst]),
+    periodMarks: pmarks
+  });
+  updateReadout(o);
+  $('#tlabel').textContent='t = '+t.toFixed(2)+' s';
+}
+
+/* ---------- ループ ---------- */
+function loop(ts){
+  if(!last)last=ts;
+  const dt=Math.min((ts-last)/1000,0.05);last=ts;
+  if(playing){
+    const o=phys();
+    t+=dt*speed;
+    if(t>=o.Twin)t-=o.Twin;     // 繰り返し再生
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+
+/* ---------- UI ---------- */
+function accent(){return getCSS('--accent');}
+function getCSS(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+
+function setAccent(){
+  const col=mode==='R'?getCSS('--R'):mode==='C'?getCSS('--C'):getCSS('--L');
+  document.documentElement.style.setProperty('--accent',col);
+}
+function buildSliders(){
+  const list=[...SHARED,ELEM[mode]];
+  $('#sliders').innerHTML=list.map(d=>{
+    const v=P[d.k];
+    return `<div class="sl" data-k="${d.k}">
+      <div class="top"><span class="nm">${d.nm}</span><span class="vl mono">${fmt(v,d)} ${d.unit}</span></div>
+      <input type="range" min="${d.min}" max="${d.max}" step="${d.step}" value="${v}">
+    </div>`;
+  }).join('');
+  $('#sliders').querySelectorAll('.sl').forEach((el,i)=>{
+    const d=list[i], inp=el.querySelector('input');
+    inp.addEventListener('input',()=>{
+      P[d.k]=parseFloat(inp.value);
+      el.querySelector('.vl').textContent=fmt(P[d.k],d)+' '+d.unit;
+    });
+  });
+}
+function fmt(v,d){return (d.step<1)?v.toFixed(d.step<0.1?2:1):v.toFixed(0);}
+
+document.querySelectorAll('.tab').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    mode=b.dataset.m; t=0; setAccent(); buildSliders();
+  });
+});
+$('#play').addEventListener('click',e=>{
+  playing=!playing;
+  e.target.textContent=playing?'❚❚ 一時停止':'▶ 再生';
+  e.target.classList.toggle('primary',true);
+});
+$('#reset').addEventListener('click',()=>{t=0;});
+$('#vecToggle').addEventListener('change',e=>showVec=e.target.checked);
+$('#speed').addEventListener('input',e=>{speed=parseFloat(e.target.value);$('#speedV').textContent=speed.toFixed(1)+'×';});
+window.addEventListener('resize',()=>render());
+
+setAccent();buildSliders();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
